@@ -10,6 +10,6 @@ cursors =[
 ]
 # Iterate through all cursors
 for cursor in cursors:
-    Button (root, text=cursor, cursor=cursor).          pack()
+    Button (root, text=cursor, cursor=cursor).pack()
 # Execute Tkinter
 root.mainloop()
