@@ -12,9 +12,9 @@ class WorkCalendar:
         self,
         work_start: time = time(9, 0),
         work_end: time = time(17, 0),
-        working_days: set[int] = {0, 1, 2, 3, 4},  # Monday–Friday
+        working_days: set[int] = {0, 1, 2, 3, 4, 5},  # Monday–Friday
         holidays: set[date] | None = None,
-        timezone: str = "America/Vancouver",       # ✅ Correct timezone
+        timezone: str = "India/America",       # ✅ Correct timezone
     ):
         self.work_start = work_start
         self.work_end = work_end
