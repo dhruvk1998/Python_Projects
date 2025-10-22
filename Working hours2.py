@@ -11,7 +11,7 @@ class WorkCalendar:
     def __init__(self,
                  work_start: time = time(9, 0),
                  work_end: time = time(17, 0),
-                 working_days: set[int] = {0, 1, 2, 3, 4, 5},  # Monday=0 ... Sunday=6
+                 working_days: set[int] = {0, 1, 2, 3, 4, 5},  # Monday=0 ... Sunday=6 
                  holidays: set[date] | None = None,
                  timezone: str = "India/America"):
         self.work_start = work_start
