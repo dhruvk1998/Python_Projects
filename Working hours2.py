@@ -1,5 +1,6 @@
 from datetime import datetime, time, timedelta, date
 from zoneinfo import ZoneInfo
+import logging
 
 
 class WorkCalendar:
@@ -12,19 +13,33 @@ class WorkCalendar:
         self,
         work_start: time = time(9, 0),
         work_end: time = time(17, 0),
-        working_days: set[int] = {0, 1, 2, 3, 4, 5},  # Monday–Friday
+        working_days: set[int] = {0, 1, 2, 3, 4, 5},  # Monday–Saturday
         holidays: set[date] | None = None,
-        timezone: str = "India/America",       # ✅ Correct timezone
+        timezone: str = "Asia/Kolkata",  # ✅ Corrected valid timezone
     ):
+        # --- Configuration validation ---
+        if not working_days:
+            raise ValueError("At least one working day must be defined.")
+        try:
+            self.tz = ZoneInfo(timezone)
+        except Exception as e:
+            raise ValueError(f"Invalid timezone '{timezone}': {e}")
+
         self.work_start = work_start
         self.work_end = work_end
         self.working_days = working_days
         self.holidays = holidays or set()
-        self.tz = ZoneInfo(timezone)
+
+        # Optional logging setup
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 
     # ------------------------------------------------------------------
     # --- Basic utilities
     # ------------------------------------------------------------------
+
+    def ensure_aware(self, dt: datetime) -> datetime:
+        """Ensure datetime is timezone-aware, using calendar timezone if naive."""
+        return dt if dt.tzinfo else dt.replace(tzinfo=self.tz)
 
     def is_working_day(self, d: date) -> bool:
         """Return True if 'd' is a working day (not weekend or holiday)."""
@@ -32,7 +47,7 @@ class WorkCalendar:
 
     def within_working_hours(self, dt: datetime) -> bool:
         """Check if datetime is within working hours."""
-        local = dt.astimezone(self.tz)
+        local = self.ensure_aware(dt).astimezone(self.tz)
         return (
             self.is_working_day(local.date())
             and (self.work_start <= local.time() < self.work_end)
@@ -47,7 +62,7 @@ class WorkCalendar:
         Return the next datetime at work_start on a valid working day at or after 'after'.
         Always returns a timezone-aware datetime.
         """
-        local = after.astimezone(self.tz)
+        local = self.ensure_aware(after).astimezone(self.tz)
         d, t = local.date(), local.time()
 
         # Case 1: same day but before work start
@@ -55,12 +70,13 @@ class WorkCalendar:
             return datetime.combine(d, self.work_start, tzinfo=self.tz)
 
         # Move to next working day if it's after hours or non-working
+        days_checked = 0
         while not self.is_working_day(d) or t >= self.work_end:
             d += timedelta(days=1)
             t = time(0, 0)  # reset midnight
-            # Safety guard to prevent infinite loop
-            if (d - after.date()).days > 365:
-                raise ValueError("No working day found within 1 year.")
+            days_checked += 1
+            if days_checked > 365:
+                raise ValueError("No working day found within 1 year (check configuration).")
 
         return datetime.combine(d, self.work_start, tzinfo=self.tz)
 
@@ -93,7 +109,7 @@ class WorkCalendar:
             consume = min(remaining, available)
 
             current += timedelta(hours=consume)
-            remaining -= consume
+            remaining = round(remaining - consume, 6)  # ✅ Floating-point precision fix
 
             # Jump to next work day if still more to add
             if remaining > 1e-9:
@@ -107,7 +123,10 @@ class WorkCalendar:
 
     def compute_deadline(self, received_at: datetime, sla_hours: float = 6.0) -> datetime:
         """Compute the SLA deadline, counting only business hours."""
-        return self.add_working_hours(received_at, sla_hours)
+        received_at = self.ensure_aware(received_at)
+        deadline = self.add_working_hours(received_at, sla_hours)
+        logging.info(f"SLA deadline computed: {deadline.isoformat()}")
+        return deadline
 
     def should_transfer_to_B(
         self,
@@ -120,7 +139,14 @@ class WorkCalendar:
         transfer=True if no response by the deadline.
         """
         deadline = self.compute_deadline(received_at, sla_hours)
+        if responded_at is not None:
+            responded_at = self.ensure_aware(responded_at)
+
         transfer = responded_at is None or responded_at > deadline
+        logging.info(
+            f"Transfer decision: {transfer} | Deadline: {deadline.isoformat()} | "
+            f"Responded at: {responded_at.isoformat() if responded_at else 'None'}"
+        )
         return transfer, deadline
 
 
@@ -149,11 +175,3 @@ if __name__ == "__main__":
     responded = datetime(2025, 9, 29, 13, 30, tzinfo=calendar.tz)
     transfer2, dl2 = calendar.should_transfer_to_B(received_at=received, responded_at=responded, sla_hours=6)
     print("Responded:", responded, "| Transfer to B?", transfer2, "| Deadline:", dl2)
-
-
-
-
-#Received: 2025-09-26 16:00:00-07:00
-#Deadline: 2025-09-29 14:00:00-07:00
-#Transfer to B? True | Deadline: 2025-09-29 14:00:00-07:00
-#Responded: 2025-09-29 13:30:00-07:00 | Transfer to B? #False | Deadline: 2025-09-29 14:00:00-07:00
